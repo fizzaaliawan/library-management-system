@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: lms-postgres-prod
+    environment:
+      POSTGRES_DB: lms_db
+      POSTGRES_USER: lms_user
+      POSTGRES_PASSWORD: lms_password_prod
+    volumes:
+      - pgdata-prod:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: lms-redis-prod
+    restart: always
+
+  backend:
+    image: ghcr.io/${GH_REPO}/backend:main
+    container_name: lms-backend-prod
+    environment:
+      DATABASE_URL: postgresql://lms_user:lms_password_prod@postgres:5432/lms_db
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-prod_secret_key_change_me_123}
+      SECRET_KEY: ${SECRET_KEY:-prod_secret_key_change_me_123}
+      ACCESS_TOKEN_EXPIRE_MINUTES: 120
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    restart: always
+
+  celery_worker:
+    image: ghcr.io/${GH_REPO}/celery-worker:main
+    container_name: lms-celery-worker-prod
+    command: celery -A workers.celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://lms_user:lms_password_prod@postgres:5432/lms_db
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    restart: always
+
+  frontend:
+    image: ghcr.io/${GH_REPO}/frontend:main
+    container_name: lms-frontend-prod
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  pgdata-prod:
